@@ -9,10 +9,22 @@ from strawberry.dataloader import DataLoader
 
 import models
 
+
+@strawberry.type
+class AccountingEntry:
+    id: strawberry.ID
+    name: str
+
+    @classmethod
+    def marshal(cls, model: models.AccountingEntry) -> "AccountingEntry":
+        return cls(id=strawberry.ID(str(model.id)), name=model.name)
+
+
 @strawberry.type
 class Author:
     id: strawberry.ID
     name: str
+    nameUpper: str
 
     @strawberry.field
     async def books(self, info: Info) -> list["Book"]:
@@ -21,7 +33,7 @@ class Author:
 
     @classmethod
     def marshal(cls, model: models.Author) -> "Author":
-        return cls(id=strawberry.ID(str(model.id)), name=model.name)
+        return cls(id=strawberry.ID(str(model.id)), name=model.name, nameUpper=model.nameUpper())
 
 
 @strawberry.type
@@ -38,26 +50,42 @@ class Book:
             author=Author.marshal(model.author) if model.author else None,
         )
 
+
 @strawberry.type
 class AuthorExists:
     message: str = "Author with this name already exist"
+
 
 @strawberry.type
 class AuthorNotFound:
     message: str = "Couldn't find an author with the supplied name"
 
+
 @strawberry.type
 class AuthorNameMissing:
     message: str = "Please supply an author name"
 
-AddBookResponse = strawberry.union("AddBookResponse", (Book, AuthorNotFound, AuthorNameMissing))
-AddAuthorResponse = strawberry.union("AddAuthorResponse", (Author, AuthorExists))
+
+AddBookResponse = strawberry.union(
+    "AddBookResponse", (Book, AuthorNotFound, AuthorNameMissing))
+AddAuthorResponse = strawberry.union(
+    "AddAuthorResponse", (Author, AuthorExists))
 
 
 all_tasks: list = []
 
+
 @strawberry.type
 class Query:
+
+    @strawberry.field
+    async def accounting_entries(self) -> list[AccountingEntry]:
+        async with models.get_session() as s:
+            sql = select(models.AccountingEntry).order_by(
+                models.AccountingEntry.name)
+            db_accounting_entry = (await s.execute(sql)).scalars().unique().all()
+        return [AccountingEntry.marshal(entry) for entry in db_accounting_entry]
+
     @strawberry.field
     async def books(self) -> list[Book]:
         async with models.get_session() as s:
@@ -75,12 +103,22 @@ class Query:
 
 @strawberry.type
 class Mutation:
+
+    @strawberry.mutation
+    async def add_accounting_entry(self, id: str | None = None, name: str = "") -> AccountingEntry:
+        async with models.get_session() as s:
+            db_accounting_entry = models.AccountingEntry(id=id, name=name)
+            s.add(db_accounting_entry)
+            await s.commit()
+        return AccountingEntry.marshal(db_accounting_entry)
+
     @strawberry.mutation
     async def add_book(self, name: str, author_name: Optional[str]) -> AddBookResponse:
         async with models.get_session() as s:
             db_author = None
             if author_name:
-                sql = select(models.Author).where(models.Author.name == author_name)
+                sql = select(models.Author).where(
+                    models.Author.name == author_name)
                 db_author = (await s.execute(sql)).scalars().first()
                 if not db_author:
                     return AuthorNotFound()
@@ -106,7 +144,8 @@ class Mutation:
 
 async def load_books_by_author(keys: list) -> list[Book]:
     async with models.get_session() as s:
-        all_queries = [select(models.Book).where(models.Book.author_id == key) for key in keys]
+        all_queries = [select(models.Book).where(
+            models.Book.author_id == key) for key in keys]
         data = [(await s.execute(sql)).scalars().unique().all() for sql in all_queries]
         print(keys, data)
     return data
