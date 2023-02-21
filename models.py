@@ -1,3 +1,5 @@
+# models.py define la estructura física de la base de datos
+
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm import mapped_column
 from sqlalchemy.orm import Mapped
