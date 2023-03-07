@@ -1,23 +1,18 @@
 import strawberry
-from typing import Optional
+from typing import Optional, TypeAlias
 
 from fastapi import FastAPI
-from sqlalchemy import select
+from sqlalchemy import select, DateTime
+from datetime import datetime
+
 from strawberry.fastapi import GraphQLRouter
 from strawberry.types import Info
 from strawberry.dataloader import DataLoader
 
 import models
-
-
-@strawberry.type
-class AccountingEntry:
-    id: strawberry.ID
-    name: str
-
-    @classmethod
-    def marshal(cls, model: models.AccountingEntry) -> "AccountingEntry":
-        return cls(id=strawberry.ID(str(model.id)), name=model.name)
+from schemas import DocumentType
+from schemas import Document
+from schemas import AccountingEntry
 
 
 @strawberry.type
@@ -67,9 +62,11 @@ class AuthorNameMissing:
 
 
 AddBookResponse = strawberry.union(
-    "AddBookResponse", (Book, AuthorNotFound, AuthorNameMissing))
+    "AddBookResponse", (Book, AuthorNotFound, AuthorNameMissing)
+)
 AddAuthorResponse = strawberry.union(
-    "AddAuthorResponse", (Author, AuthorExists))
+    "AddAuthorResponse", (Author, AuthorExists)
+)
 
 
 all_tasks: list = []
@@ -83,8 +80,10 @@ class Query:
         async with models.get_session() as s:
             sql = select(models.AccountingEntry).order_by(
                 models.AccountingEntry.name)
-            db_accounting_entry = (await s.execute(sql)).scalars().unique().all()
-        return [AccountingEntry.marshal(entry) for entry in db_accounting_entry]
+            db_accounting_entry = await s.execute(sql)
+            data = db_accounting_entry.scalars().unique().all()
+
+        return [AccountingEntry.marshal(entry) for entry in data]
 
     @strawberry.field
     async def books(self) -> list[Book]:
@@ -103,6 +102,32 @@ class Query:
 
 @strawberry.type
 class Mutation:
+
+    @strawberry.mutation
+    async def add_document(self, issuance: datetime, settlement: datetime, document_type_id: int, accounting_entry_id: Optional[int] = None) -> Document:
+        async with models.get_session() as s:
+            document_type = await s.get(models.DocumentType, document_type_id)
+            accounting_entry = await s.get(models.AccountingEntry, accounting_entry_id) if accounting_entry_id else None
+
+            new_document = models.Document(
+                issuance=issuance, settlement=settlement, type=document_type, accounting_entry=accounting_entry)
+            s.add(new_document)
+
+            new_accounting_entry = models.AccountingEntry(
+                name=f"{new_document.type.description}", document=new_document)
+            s.add(new_accounting_entry)
+
+            await s.commit()
+            return Document.marshal(new_document)
+
+    @strawberry.mutation
+    async def add_document_type(self, description: str, afip_code: Optional[str] = None) -> DocumentType:
+        async with models.get_session() as s:
+            db_document_type = models.DocumentType(
+                description=description, afip_code=afip_code)
+            s.add(db_document_type)
+            await s.commit()
+        return DocumentType.marshal(db_document_type)
 
     @strawberry.mutation
     async def add_accounting_entry(self, id: str | None = None, name: str = "") -> AccountingEntry:

@@ -1,0 +1,7 @@
+{
+  "python.linting.enabled": true,
+  "python.formatting.autopep8Args": [
+    "--ignore",
+    "E402"
+  ]
+}
