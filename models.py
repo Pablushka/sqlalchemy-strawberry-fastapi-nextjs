@@ -187,6 +187,38 @@ class TaxCreditOption(Base):
     description: Mapped[str] = mapped_column(String(50), nullable=False)
 
 
+class Tax(Base):
+    __tablename__="taxes"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    description: Mapped[str] = mapped_column(String(100), nullable=False)
+
+class TaxPaymentType(Base):
+    __tablename__="tax_payment_type"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    description: Mapped[str] = mapped_column(String(20), nullable=False)
+
+
+class TaxPayment(Base):
+    __tablename__="tax_payment"
+    id: Mapped[int] = mapped_column(
+        BinaryUUID, primary_key=True, default=uuid4)
+    emitter_cuit: Mapped[int] = mapped_column(Integer, nullable=False)
+    sender_cuit: Mapped[int] = mapped_column(Integer, nullable=False)
+    tax:Mapped[int] = mapped_column(Integer, ForeignKey(Tax.id), nullable=True)
+    date:Mapped[DateTime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now())
+    certificate:Mapped[int] = mapped_column(Integer, nullable=False)
+    associated_document: Mapped[int] = mapped_column(Integer, ForeignKey(Document.id), nullable=True)
+    trigger_amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    state: Mapped[int] = mapped_column(
+        Integer, ForeignKey("states.id"), nullable=True, index=True, name="fk_tax_payment_state_id") 
+    #nullable True porque puede ser una retención nacional
+    type_tax_payment:Mapped[int] = mapped_column(
+        Integer, ForeignKey("tax_payment_type.id"), nullable=False, name="fk_tax_payment_type_id") 
+    
+    
+
 class Author(Base):
     __tablename__ = "authors"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
