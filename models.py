@@ -48,19 +48,22 @@ class Document(Base):
         DateTime(timezone=True), nullable=False, index=True)
 
     accounting_entry_id: Mapped[int] = mapped_column(
-        BinaryUUID, ForeignKey("accounting_entries.id"), nullable=True, index=True, name="fk_document_accounting_entry_id")
+        BinaryUUID, ForeignKey("accounting_entries.id"), nullable=True, index=True)
 
-    accounting_entry: Mapped[Optional["AccountingEntry"]] = relationship(
-        "AccountingEntry", lazy="joined", back_populates="document")
+    # accounting_entry: Mapped[Optional["AccountingEntry"]] = relationship(
+    #     "AccountingEntry", lazy="joined", back_populates="document")
+
+    operation: Mapped["Operation"] = relationship(
+        "Operation", lazy="joined", foreign_keys=["operations.sells"], back_populates="sells")
 
     type_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey(DocumentType.id), nullable=True, name="fk_document_type_id")  # tipo de comprobante
+        Integer, ForeignKey(DocumentType.id), nullable=True)  # tipo de comprobante
 
     type: Mapped[DocumentType] = relationship(
         DocumentType, lazy="joined")  # , back_populates="documents"
 
     operation_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("operations.id"), nullable=False, index=True, name="fk_document_operation_id")
+        Integer, ForeignKey("operations.id"), nullable=False, index=True)
 
 
 class AccountingEntry(Base):
@@ -71,14 +74,15 @@ class AccountingEntry(Base):
     # commitent_id: Mapped[Optional[int]] = mapped_column(
 
     document_id: Mapped[Optional[int]] = mapped_column(
-        BinaryUUID, ForeignKey(Document.id), nullable=True, index=True, name="fk_accounting_entry_document_id")
+        BinaryUUID, ForeignKey(Document.id), nullable=True, index=True)
 
-    document: Mapped[Optional[Document]] = relationship(
-        Document, uselist=False, lazy="joined", back_populates="accounting_entry")
+    # document: Mapped[Optional[Document]] = relationship(
+    #     Document, uselist=False, lazy="joined", back_populates="accounting_entry")
 
     details: Mapped[list["AccountingEntryDetail"]] = relationship(
         "AccountingEntryDetail", lazy="joined", back_populates="accounting_entry")
-
+    
+    
     created: Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now())
 
@@ -93,16 +97,16 @@ class AccountingEntryDetail(Base):
 
     # fk a la cuenta del plan de cuentas
     amount: Mapped[Decimal] = mapped_column(DECIMAL(18, 2), nullable=False)
-    column: Mapped[str] = mapped_column(String(1), nullable=False)
+    column: Mapped[str] = mapped_column(String(1), nullable=False) #Debe o Haber
 
     accounting_entry_id: Mapped[Optional[int]] = mapped_column(
-        BinaryUUID, ForeignKey(AccountingEntry.id), nullable=True, index=True)
+        BinaryUUID, ForeignKey("accounting_entries.id"), nullable=False, index=True)
 
-    liquidation_entries_id: Mapped[Optional[int]] = mapped_column(
-        BinaryUUID, ForeignKey("liquidation_entries.id"), nullable=True, index=True, name="fk_accounting_entry_detail_liquidation_entry_id")
+    liquidation_entry_id: Mapped[Optional[int]] = mapped_column(
+        BinaryUUID, ForeignKey("liquidation_entries.id"), nullable=True, index=True)
 
-    # accounting_entry: Mapped[Optional[AccountingEntry]] = relationship(
-    #     AccountingEntry, lazy="joined", back_populates="details")
+    accounting_entry: Mapped[Optional[AccountingEntry]] = relationship(
+        AccountingEntry, lazy="joined", back_populates="details")
 
     created = mapped_column(
         DateTime(timezone=True), server_default=func.now())
@@ -119,9 +123,15 @@ class Operation(Base):
 
     # filter sells relation by type_id = 1
     # TODO: Experimentar filtro por tipo de operacion
-    sells = relationship(
-        Document, lazy="joined", back_populates="operation", foreign_keys=[Document.id], primaryjoin="and_(Document.id==1, Document.operation_id==Operation.id)")
+    # sells = relationship(
+    #     Document, lazy="joined", back_populates="operation", foreign_keys=[Document.id], primaryjoin="and_(Document.id==1, Document.operation_id==Operation.id)")
 
+    document_id: Mapped[int] = mapped_column(
+        BinaryUUID, ForeignKey("documents.id"), nullable=False, index=True)
+   
+    sells = relationship(
+        Document, lazy="joined", back_populates="operation", foreign_keys=[document_id])
+    
 
 class LiquidationEntry(Base):
     __tablename__ = "liquidation_entries"
@@ -131,10 +141,10 @@ class LiquidationEntry(Base):
     # commitent_id: Mapped[Optional[int]] = mapped_column(
 
     state_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("states.id"), nullable=False, index=True, name="fk_liquidation_entry_state_id")
+        Integer, ForeignKey("states.id"), nullable=False, index=True)
 
     accounting_entry_detail_id: Mapped[int] = mapped_column(
-        BinaryUUID, ForeignKey(AccountingEntryDetail.id), nullable=True, index=True, name="fk_liquidation_entry_accounting_entry_detail_id")
+        BinaryUUID, ForeignKey(AccountingEntryDetail.id), nullable=True, index=True)
 
     accounting_entry_detail: Mapped[Optional[AccountingEntryDetail]] = relationship(
         AccountingEntryDetail, lazy="joined", back_populates="liquidation_entries")
@@ -143,13 +153,13 @@ class LiquidationEntry(Base):
     neto_iibb: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
     aliquots_iva_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("aliquots_iva.id"), nullable=False, index=True, name="fk_liquidation_entry_aliquots_iva_id")
+        Integer, ForeignKey("aliquots_iva.id"), nullable=False, index=True)
 
     activity_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("activities.id"), nullable=False, index=True, name="fk_liquidation_entry_activity_id")
+        Integer, ForeignKey("activities.id"), nullable=False, index=True)
 
     tax_credit_option_id: Mapped[Optional[int]] = mapped_column(
-        Integer, ForeignKey("tax_credit_options.id"), nullable=True, index=True, name="fk_liquidation_entry_tax_credit_option_id")
+        Integer, ForeignKey("tax_credit_options.id"), nullable=True, index=True)
 
     details = relationship("AccountingEntryDetail", lazy="joined",
                            back_populates="accounting_entry")
@@ -190,32 +200,33 @@ class TaxCreditOption(Base):
 class Tax(Base):
     __tablename__="taxes"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    afip_code: Mapped[int] = mapped_column(Integer, nullable=False)
     description: Mapped[str] = mapped_column(String(100), nullable=False)
 
 class TaxPaymentType(Base):
-    __tablename__="tax_payment_type"
+    __tablename__="tax_payment_types"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     description: Mapped[str] = mapped_column(String(20), nullable=False)
 
 
 class TaxPayment(Base):
-    __tablename__="tax_payment"
+    __tablename__="tax_payments"
     id: Mapped[int] = mapped_column(
         BinaryUUID, primary_key=True, default=uuid4)
     emitter_cuit: Mapped[int] = mapped_column(Integer, nullable=False)
     sender_cuit: Mapped[int] = mapped_column(Integer, nullable=False)
-    tax:Mapped[int] = mapped_column(Integer, ForeignKey(Tax.id), nullable=True)
-    date:Mapped[DateTime] = mapped_column(
+    tax_id:Mapped[int] = mapped_column(Integer, ForeignKey("taxes.id"), nullable=False)
+    issuance:Mapped[DateTime] = mapped_column(
         DateTime(timezone=True), server_default=func.now())
     certificate:Mapped[int] = mapped_column(Integer, nullable=False)
-    associated_document: Mapped[int] = mapped_column(Integer, ForeignKey(Document.id), nullable=True)
+    document_id: Mapped[int] = mapped_column(BinaryUUID, ForeignKey(Document.id), nullable=True)
     trigger_amount: Mapped[int] = mapped_column(Integer, nullable=False)
     amount: Mapped[int] = mapped_column(Integer, nullable=False)
-    state: Mapped[int] = mapped_column(
-        Integer, ForeignKey("states.id"), nullable=True, index=True, name="fk_tax_payment_state_id") 
+    state_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("states.id"), nullable=True, index=True) 
     #nullable True porque puede ser una retención nacional
     type_tax_payment:Mapped[int] = mapped_column(
-        Integer, ForeignKey("tax_payment_type.id"), nullable=False, name="fk_tax_payment_type_id") 
+        Integer, ForeignKey("tax_payment_types.id"), nullable=False) 
     
     
 
